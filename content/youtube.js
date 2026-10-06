@@ -1,64 +1,54 @@
-// ShieldBlock - Dedicated YouTube Ad Blocker & Auto-Skipper
+// ShieldBlock - Dedicated YouTube Ad Blocker & Auto-Skipper (Runs in MAIN world)
 
 (function () {
   'use strict';
 
-  // Mark script presence
-  window.__shieldBlockYouTubeActive = true;
-
   let isEnabled = true;
   let wasAdPlaying = false;
-  let previousMuted = false;
+  let originalMuted = false;
+  let originalPlaybackRate = 1.0;
+  let adActiveTicks = 0;
 
-  // Check if extension is enabled & not whitelisted
-  chrome.storage.local.get(['shieldBlockEnabled', 'whitelistedDomains'], (res) => {
-    const globallyEnabled = res.shieldBlockEnabled !== false;
-    const whitelisted = Array.isArray(res.whitelistedDomains) && 
-      (res.whitelistedDomains.includes('youtube.com') || res.whitelistedDomains.includes('www.youtube.com'));
-
-    if (!globallyEnabled || whitelisted) {
-      isEnabled = false;
-      return;
+  // Listen for config from the isolated bridge
+  window.addEventListener('message', (event) => {
+    if (event.source !== window || !event.data) return;
+    if (event.data.type === 'SHIELDBLOCK_CONFIG') {
+      isEnabled = event.data.enabled !== false;
     }
-
-    initYouTubeAdShield();
   });
 
-  function reportAdSkipped() {
-    chrome.runtime.sendMessage({
-      action: 'elementsBlocked',
-      count: 1,
-      host: 'youtube.com'
-    }).catch(() => {});
+  // Request config from bridge
+  window.postMessage({ type: 'SHIELDBLOCK_REQUEST_CONFIG' }, '*');
+
+  function reportAdBlocked() {
+    window.postMessage({ type: 'SHIELDBLOCK_AD_BLOCKED' }, '*');
   }
 
-  // Detect whether an ad is currently playing on YouTube HTML5 player
-  function checkIsAdPlaying(moviePlayer) {
+  // Detect whether an ad is actively playing or interrupting
+  function isAdActive() {
+    const moviePlayer = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
     if (!moviePlayer) return false;
 
-    // 1. Check DOM classes
+    // 1. YouTube player class indicators
     if (moviePlayer.classList.contains('ad-showing') || moviePlayer.classList.contains('ad-interrupting')) {
       return true;
     }
 
-    // 2. Check Player API ad state (-1 means no ad, >= 0 means ad active)
-    if (typeof moviePlayer.getAdState === 'function') {
-      try {
-        if (moviePlayer.getAdState() > -1) return true;
-      } catch (e) {}
+    // 2. Active skip button visible
+    const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, [class*="ytp-ad-skip-button"]');
+    if (skipBtn && skipBtn.offsetParent !== null) {
+      return true;
     }
 
-    // 3. Check Lifa ad playing flag
-    if (typeof moviePlayer.isLifaAdPlaying === 'function') {
-      try {
-        if (moviePlayer.isLifaAdPlaying()) return true;
-      } catch (e) {}
+    // 3. Timed pie countdown or survey container
+    if (document.querySelector('.ytp-ad-timed-pie-countdown-container, .ytp-ad-survey-questions')) {
+      return true;
     }
 
     return false;
   }
 
-  // 1. Skip Video Ads smoothly without seeking (seeking causes black screen buffer starvation)
+  // 1. Fast, smooth video ad skip & speedup
   function handleVideoAds() {
     if (!isEnabled) return;
 
@@ -67,31 +57,34 @@
 
     if (!moviePlayer || !video) return;
 
-    const isAd = checkIsAdPlaying(moviePlayer);
+    const adPlaying = isAdActive();
 
-    if (isAd) {
+    if (adPlaying) {
+      adActiveTicks++;
+
       if (!wasAdPlaying) {
         wasAdPlaying = true;
-        previousMuted = video.muted;
+        originalMuted = video.muted;
+        originalPlaybackRate = (video.playbackRate > 2.0 || video.playbackRate <= 0) ? 1.0 : video.playbackRate;
       }
 
-      // Mute audio during ad
+      // 1. Instantly mute audio so user hears nothing
       video.muted = true;
 
-      // Accelerate playback speed to 16x (ad completes in 0.2 - 0.5s naturally)
+      // 2. Accelerate playback speed to 16x
       video.playbackRate = 16.0;
 
-      // Ensure ad doesn't freeze or pause
+      // 3. Ensure video doesn't stall or pause
       if (video.paused) {
         video.play().catch(() => {});
       }
 
-      // Auto-click skip button immediately if visible
+      // 4. Click any visible skip button immediately
       const skipSelectors = [
-        '.ytp-ad-skip-button',
-        '.ytp-ad-skip-button-modern',
         '.ytp-skip-ad-button',
         '.ytp-skip-ad-button-modern',
+        '.ytp-ad-skip-button',
+        '.ytp-ad-skip-button-modern',
         '[class*="ytp-ad-skip-button"]',
         '.ytp-ad-skip-button-slot button',
         'button.ytp-ad-skip-button',
@@ -103,50 +96,74 @@
 
       for (const selector of skipSelectors) {
         const btn = document.querySelector(selector);
-        if (btn) {
+        if (btn && typeof btn.click === 'function') {
           btn.click();
           break;
         }
       }
+
+      // 5. If unskippable ad persists for > 800ms (10 ticks at 80ms), use Player API reload
+      if (adActiveTicks > 10) {
+        const playerEl = document.querySelector('#ytd-player') || moviePlayer;
+        const player = (playerEl && playerEl.getPlayer) ? playerEl.getPlayer() : playerEl;
+
+        if (player && typeof player.getVideoData === 'function') {
+          const videoData = player.getVideoData();
+          const videoId = videoData && videoData.video_id;
+          const start = Math.floor(player.getCurrentTime ? player.getCurrentTime() : 0);
+
+          if (videoId && start >= 0) {
+            if (playerEl && 'loadVideoWithPlayerVars' in playerEl) {
+              playerEl.loadVideoWithPlayerVars({ videoId, start });
+              adActiveTicks = 0;
+            } else if (player && 'loadVideoByPlayerVars' in player) {
+              player.loadVideoByPlayerVars({ videoId, start });
+              adActiveTicks = 0;
+            }
+          }
+        }
+      }
     } else {
-      // Ad finished, restore regular playback
+      // Ad is no longer playing
       if (wasAdPlaying) {
         wasAdPlaying = false;
-        video.playbackRate = 1.0;
-        video.muted = previousMuted;
-        reportAdSkipped();
+        adActiveTicks = 0;
 
-        // Resume main video if paused during transition
+        // Restore normal playback rate and original mute setting
+        video.playbackRate = originalPlaybackRate || 1.0;
+        video.muted = originalMuted;
+
         if (video.paused) {
           video.play().catch(() => {});
         }
+
+        reportAdBlocked();
       } else if (video.playbackRate > 2.0) {
-        // Safety recovery if ad transition happened between intervals
+        // Recovery safeguard
         video.playbackRate = 1.0;
-        video.muted = false;
       }
     }
   }
 
-  // 2. Remove Anti-Adblock Popup & Resume Playback
-  function bypassAntiAdblockModal() {
+  // 2. Prevent Black Screen & Remove Anti-Adblock Overlays
+  function fixBlackScreenAndBypassModal() {
     if (!isEnabled) return;
 
-    // Remove player-unavailable attribute if YouTube added it
+    // Remove player-unavailable attribute (which sets #player-container { visibility: hidden })
     const flexy = document.querySelector('ytd-watch-flexy');
     if (flexy && flexy.hasAttribute('player-unavailable')) {
       flexy.removeAttribute('player-unavailable');
     }
 
+    // Remove anti-adblock modal if triggered
     const enforcementDialog = document.querySelector('ytd-enforcement-message-view-model');
-    const dialogBackdrop = document.querySelector('tp-yt-iron-overlay-backdrop');
-
     if (enforcementDialog) {
       const parentDialog = enforcementDialog.closest('tp-yt-paper-dialog') || enforcementDialog;
       parentDialog.remove();
-      if (dialogBackdrop) dialogBackdrop.remove();
 
-      // Resume video playback
+      const backdrop = document.querySelector('tp-yt-iron-overlay-backdrop');
+      if (backdrop) backdrop.remove();
+
       const video = document.querySelector('video.html5-main-video') || document.querySelector('video');
       if (video && video.paused) {
         video.play().catch(() => {});
@@ -154,52 +171,55 @@
     }
   }
 
-  // 3. Clean In-Feed, Home, and Search Ads
+  // 3. Clean In-Feed, Home, and Sidebar Ads (NEVER touch #player-ads or player module!)
   function cleanStaticAds() {
     if (!isEnabled) return;
 
-    const staticAdSelectors = [
+    const safeStaticAdSelectors = [
       'ytd-ad-slot-renderer',
       'ytd-in-feed-ad-layout-renderer',
       'ytd-banner-promo-renderer',
       'ytd-statement-banner-renderer',
       '#masthead-ad',
-      '#player-ads',
-      '.ytp-ad-overlay-container',
-      '.ytp-ad-message-container',
       'ytd-promoted-sparkles-web-renderer',
       'ytd-display-ad-renderer',
-      'ytd-promoted-video-renderer'
+      'ytd-promoted-video-renderer',
+      'ytd-merch-shelf-renderer',
+      '#panels > ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-ads"]',
+      '.ytp-featured-product',
+      '.yt-mealbar-promo-renderer',
+      'ytmusic-mealbar-promo-renderer',
+      'ytmusic-statement-banner-renderer'
     ];
 
-    staticAdSelectors.forEach((selector) => {
+    for (const selector of safeStaticAdSelectors) {
       const els = document.querySelectorAll(selector);
-      els.forEach((el) => {
-        // Also hide parent grid card if present
+      for (const el of els) {
+        // Hide card parent if in home/feed grid, otherwise hide element
         const cardParent = el.closest('ytd-rich-item-renderer, ytd-rich-section-renderer');
         const target = cardParent || el;
         if (!target.dataset.sbCleaned) {
           target.dataset.sbCleaned = 'true';
           target.style.setProperty('display', 'none', 'important');
         }
-      });
-    });
+      }
+    }
   }
 
-  function initYouTubeAdShield() {
-    // High-frequency check for video ads (every 80ms)
+  function init() {
+    // High-frequency loop for responsive ad skipping without lag (every 80ms)
     setInterval(() => {
       handleVideoAds();
-      bypassAntiAdblockModal();
+      fixBlackScreenAndBypassModal();
     }, 80);
 
-    // Periodic check for static feed ads
-    setInterval(cleanStaticAds, 800);
+    // Periodic sweep for feed and banner ads
+    setInterval(cleanStaticAds, 1000);
 
-    // MutationObserver to react immediately to DOM changes
+    // DOM Mutation observer for instant response
     const observer = new MutationObserver(() => {
       handleVideoAds();
-      bypassAntiAdblockModal();
+      fixBlackScreenAndBypassModal();
       cleanStaticAds();
     });
 
@@ -207,5 +227,11 @@
       childList: true,
       subtree: true
     });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
   }
 })();
