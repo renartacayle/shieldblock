@@ -58,7 +58,7 @@
     return false;
   }
 
-  // 1. Skip Video Ads (Pre-roll, Mid-roll, Post-roll)
+  // 1. Skip Video Ads smoothly without seeking (seeking causes black screen buffer starvation)
   function handleVideoAds() {
     if (!isEnabled) return;
 
@@ -78,12 +78,12 @@
       // Mute audio during ad
       video.muted = true;
 
-      // Accelerate playback speed to 16x
+      // Accelerate playback speed to 16x (ad completes in 0.2 - 0.5s naturally)
       video.playbackRate = 16.0;
 
-      // Fast-forward video to end of ad segment
-      if (Number.isFinite(video.duration) && video.duration > 0.1) {
-        video.currentTime = video.duration;
+      // Ensure ad doesn't freeze or pause
+      if (video.paused) {
+        video.play().catch(() => {});
       }
 
       // Auto-click skip button immediately if visible
@@ -91,11 +91,14 @@
         '.ytp-ad-skip-button',
         '.ytp-ad-skip-button-modern',
         '.ytp-skip-ad-button',
+        '.ytp-skip-ad-button-modern',
         '[class*="ytp-ad-skip-button"]',
         '.ytp-ad-skip-button-slot button',
         'button.ytp-ad-skip-button',
+        'button.ytp-ad-skip-button-modern',
         '.ytp-ad-preview-container',
-        '.ytp-ad-skip-button-container button'
+        '.ytp-ad-skip-button-container button',
+        '.ytp-ad-overlay-close-button'
       ];
 
       for (const selector of skipSelectors) {
@@ -113,10 +116,14 @@
         video.muted = previousMuted;
         reportAdSkipped();
 
-        // Resume if paused
+        // Resume main video if paused during transition
         if (video.paused) {
           video.play().catch(() => {});
         }
+      } else if (video.playbackRate > 2.0) {
+        // Safety recovery if ad transition happened between intervals
+        video.playbackRate = 1.0;
+        video.muted = false;
       }
     }
   }
@@ -180,11 +187,11 @@
   }
 
   function initYouTubeAdShield() {
-    // High-frequency check for video ads (every 100ms)
+    // High-frequency check for video ads (every 80ms)
     setInterval(() => {
       handleVideoAds();
       bypassAntiAdblockModal();
-    }, 100);
+    }, 80);
 
     // Periodic check for static feed ads
     setInterval(cleanStaticAds, 800);
