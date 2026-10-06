@@ -1,0 +1,105 @@
+/* ShieldBlock Cosmetic Filtering */
+
+/* 1. Google AdSense / Ad Exchange containers */
+ins.adsbygoogle,
+.adsbygoogle,
+[data-ad-client],
+[data-ad-slot],
+[data-google-query-id],
+[id^="google_ads_iframe"],
+[id^="aswift_"],
+iframe[id^="aswift_"],
+iframe[name^="google_ads_iframe"] {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* 2. Recommendation / Native clickbait widgets */
+[id^="taboola-"],
+[class^="taboola-"],
+.trc_related_container,
+.outbrain-container,
+.OUTBRAIN,
+[data-widget-id^="taboola"],
+[data-widget-id^="outbrain"],
+.mgid-widget,
+.revcontent,
+.zergnet-widget {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* 3. Generic ad wrappers & banners */
+.ad-container,
+.ad-wrapper,
+.ad-banner,
+.ad-slot,
+.ad-box,
+.ad-unit,
+.ad_unit,
+.ad_banner,
+.ad-placeholder,
+.advert-wrapper,
+.advertisement-container,
+.advertisement-space,
+.sponsored-post,
+.sponsored-content-widget,
+[aria-label="advertisement" i],
+[aria-label="sponsored" i],
+[aria-label="ads" i] {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* 4. Sticky / Floating ad banners */
+[class*="floating-ad"],
+[id*="floating-ad"],
+[class*="sticky-ad"],
+[id*="sticky-ad"],
+[class*="bottom-sticky-ad"],
+[id*="bottom-sticky-ad"],
+.fly-ad,
+.corner-ad {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 5. In-feed & In-article ads */
+.inarticle-ad,
+.in-article-ad,
+.in-post-ad,
+.inline-ad,
+.inline-ad-wrap {
+  display: none !important;
+}
+
+/* 6. Ad iframes */
+iframe[src*="doubleclick.net"],
+iframe[src*="googlesyndication.com"],
+iframe[src*="adservice.google.com"],
+iframe[src*="adnxs.com"],
+iframe[src*="criteo.com"],
+iframe[src*="taboola.com"],
+iframe[src*="outbrain.com"],
+iframe[src*="popads.net"],
+iframe[src*="propellerads.com"] {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}

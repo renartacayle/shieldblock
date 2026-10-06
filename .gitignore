@@ -1,0 +1,12 @@
+# Private keys and packaging builds
+*.pem
+*.crx
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS generated files
+.DS_Store
+Thumbs.db

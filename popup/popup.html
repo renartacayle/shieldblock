@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShieldBlock</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <img src="../icons/icon32.png" alt="ShieldBlock" class="brand-icon">
+        <div>
+          <h1 class="brand-title">ShieldBlock</h1>
+          <span class="brand-sub">Ad & Tracker Shield</span>
+        </div>
+      </div>
+      <div id="statusBadge" class="status-badge active">Aktif</div>
+    </header>
+
+    <!-- Main Shield Toggle -->
+    <div class="toggle-card">
+      <div class="shield-graphic-container">
+        <div id="shieldGraphic" class="shield-circle active">
+          <svg viewBox="0 0 24 24" class="shield-svg" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+          </svg>
+        </div>
+      </div>
+      <div class="toggle-info">
+        <span id="toggleStateText" class="state-text">Perlindungan Aktif</span>
+        <label class="switch">
+          <input type="checkbox" id="globalToggle" checked>
+          <span class="slider round"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Stats Section -->
+    <div class="stats-grid">
+      <div class="stat-box">
+        <span class="stat-number" id="tabBlockedCount">0</span>
+        <span class="stat-label">Di Halaman Ini</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-number" id="totalBlockedCount">0</span>
+        <span class="stat-label">Total Diblokir</span>
+      </div>
+    </div>
+
+    <!-- Domain Whitelist Control -->
+    <div class="domain-card">
+      <div class="domain-info">
+        <span class="domain-label">Situs Sekarang:</span>
+        <span class="domain-name" id="currentDomain">Memuat...</span>
+      </div>
+      <button id="whitelistBtn" class="btn-secondary">
+        <span id="whitelistBtnText">Nonaktifkan di situs ini</span>
+      </button>
+    </div>
+
+    <!-- Footer Controls -->
+    <footer class="footer">
+      <button id="reloadTabBtn" class="btn-action">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 11-.57-8.38l5.67-5.67"/>
+        </svg>
+        Muat Ulang Halaman
+      </button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
