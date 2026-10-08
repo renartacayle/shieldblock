@@ -1,4 +1,4 @@
-// ShieldBlock - Dedicated YouTube Ad Blocker & Auto-Skipper (Runs in MAIN world)
+// ShieldBlock - YouTube Super Speedup & Instant Skip Engine (Runs in MAIN world)
 
 (function () {
   'use strict';
@@ -8,6 +8,7 @@
   let originalMuted = false;
   let originalPlaybackRate = 1.0;
   let adActiveTicks = 0;
+  let currentVideoElement = null;
 
   // Listen for config from the isolated bridge
   window.addEventListener('message', (event) => {
@@ -35,20 +36,35 @@
     }
 
     // 2. Active skip button visible
-    const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, [class*="ytp-ad-skip-button"]');
+    const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, [class*="ytp-ad-skip-button"], .ytp-ad-skip-slot');
     if (skipBtn && skipBtn.offsetParent !== null) {
       return true;
     }
 
-    // 3. Timed pie countdown or survey container
-    if (document.querySelector('.ytp-ad-timed-pie-countdown-container, .ytp-ad-survey-questions')) {
+    // 3. Timed countdown or survey container
+    if (document.querySelector('.ytp-ad-timed-pie-countdown-container, .ytp-ad-survey-questions, .ytp-ad-player-overlay')) {
       return true;
     }
 
     return false;
   }
 
-  // 1. Fast, smooth video ad skip & speedup
+  // Attach ratechange protection to video element
+  function attachVideoListeners(video) {
+    if (!video || video === currentVideoElement) return;
+    currentVideoElement = video;
+
+    video.addEventListener('ratechange', () => {
+      // If YouTube tries to force playbackRate back to 1.0 while ad is showing, force back to 16.0
+      if (isEnabled && isAdActive() && video.playbackRate !== 16.0) {
+        try {
+          video.playbackRate = 16.0;
+        } catch (e) {}
+      }
+    });
+  }
+
+  // Fast, smooth video ad skip & extreme speedup (Max Native 16x + Instant Buffer Jump)
   function handleVideoAds() {
     if (!isEnabled) return;
 
@@ -56,6 +72,7 @@
     const video = document.querySelector('video.html5-main-video') || document.querySelector('video');
 
     if (!moviePlayer || !video) return;
+    attachVideoListeners(video);
 
     const adPlaying = isAdActive();
 
@@ -71,27 +88,46 @@
       // 1. Instantly mute audio so user hears nothing
       video.muted = true;
 
-      // 2. Accelerate playback speed to 16x
-      video.playbackRate = 16.0;
+      // 2. Accelerate playback speed to maximum native rate allowed by browser (16x)
+      try {
+        if (video.playbackRate !== 16.0) {
+          video.playbackRate = 16.0;
+        }
+      } catch (e) {}
 
-      // 3. Ensure video doesn't stall or pause
+      // 3. Fast-forward buffered ad video towards the end (effectively instant / 2048x speed)
+      // Only apply if video.duration is strictly ad-length (< 180 seconds)
+      if (isFinite(video.duration) && video.duration > 0 && video.duration < 180) {
+        const bufferedEnd = (video.buffered && video.buffered.length > 0)
+          ? video.buffered.end(video.buffered.length - 1)
+          : video.duration;
+        const targetTime = Math.min(bufferedEnd, video.duration - 0.1);
+        if (targetTime > video.currentTime + 0.5) {
+          video.currentTime = targetTime;
+        }
+      }
+
+      // 4. Ensure video does not pause or stall
       if (video.paused) {
         video.play().catch(() => {});
       }
 
-      // 4. Click any visible skip button immediately
+      // 5. Click any skip button immediately
       const skipSelectors = [
         '.ytp-skip-ad-button',
         '.ytp-skip-ad-button-modern',
         '.ytp-ad-skip-button',
         '.ytp-ad-skip-button-modern',
+        '.ytp-ad-skip-button-container button',
+        '.ytp-ad-skip-slot button',
         '[class*="ytp-ad-skip-button"]',
         '.ytp-ad-skip-button-slot button',
         'button.ytp-ad-skip-button',
         'button.ytp-ad-skip-button-modern',
+        'button.ytp-skip-ad-button',
         '.ytp-ad-preview-container',
-        '.ytp-ad-skip-button-container button',
-        '.ytp-ad-overlay-close-button'
+        '.ytp-ad-overlay-close-button',
+        'ytd-button-renderer#skip-button button'
       ];
 
       for (const selector of skipSelectors) {
@@ -102,8 +138,8 @@
         }
       }
 
-      // 5. If unskippable ad persists for > 800ms (10 ticks at 80ms), use Player API reload
-      if (adActiveTicks > 10) {
+      // 6. If unskippable ad persists for > 500ms (20 ticks at 25ms), invoke Player API reload
+      if (adActiveTicks > 20) {
         const playerEl = document.querySelector('#ytd-player') || moviePlayer;
         const player = (playerEl && playerEl.getPlayer) ? playerEl.getPlayer() : playerEl;
 
@@ -145,7 +181,7 @@
     }
   }
 
-  // 2. Prevent Black Screen & Remove Anti-Adblock Overlays
+  // Prevent Black Screen & Remove Anti-Adblock Overlays
   function fixBlackScreenAndBypassModal() {
     if (!isEnabled) return;
 
@@ -171,7 +207,7 @@
     }
   }
 
-  // 3. Clean In-Feed, Home, and Sidebar Ads (NEVER touch #player-ads or player module!)
+  // Clean In-Feed, Home, and Sidebar Ads (NEVER touch #player-ads or player module!)
   function cleanStaticAds() {
     if (!isEnabled) return;
 
@@ -195,7 +231,6 @@
     for (const selector of safeStaticAdSelectors) {
       const els = document.querySelectorAll(selector);
       for (const el of els) {
-        // Hide card parent if in home/feed grid, otherwise hide element
         const cardParent = el.closest('ytd-rich-item-renderer, ytd-rich-section-renderer');
         const target = cardParent || el;
         if (!target.dataset.sbCleaned) {
@@ -207,16 +242,16 @@
   }
 
   function init() {
-    // High-frequency loop for responsive ad skipping without lag (every 80ms)
+    // Ultra-high frequency loop (every 25ms) for instantaneous ad skip & speedup
     setInterval(() => {
       handleVideoAds();
       fixBlackScreenAndBypassModal();
-    }, 80);
+    }, 25);
 
     // Periodic sweep for feed and banner ads
     setInterval(cleanStaticAds, 1000);
 
-    // DOM Mutation observer for instant response
+    // DOM Mutation observer for immediate response to dynamic changes
     const observer = new MutationObserver(() => {
       handleVideoAds();
       fixBlackScreenAndBypassModal();
